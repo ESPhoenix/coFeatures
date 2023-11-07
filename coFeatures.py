@@ -1,37 +1,69 @@
 ########################################################################################
-## BASIC LIBRARIES
-from multiprocessing import process
+## BASIC LIBRARIES ##
 import os
 from os import path as p
-import numpy as np
+import sys
 import pandas as pd
 import multiprocessing as mp
-import importlib
 import argpass
-import multiprocessing_logging
-import logging
-## coFeatures SPESIFIC MODULES
+## coFeatures SPESIFIC MODULES ##
 from utils_coFeatures import *
 from modules_coFeatures import *
-
-
 ########################################################################################
-# get inputs
 def read_inputs():
-    global inputDir, outputDir, aminoAcidTable, cofactorPresent,cofactorNames
-    global keyAtomsDict, orbAtomsDict, cloudAtomsDict, orbRange, cloudRange
+    ## MAKE A PARSER TO READ --CONFIG FLAG ##
     parser = argpass.ArgumentParser()
     parser.add_argument("--config")
     args = parser.parse_args()
     configName=args.config
+    ## DEAL WITH .PY EXTENSION IF PRESENT ##
     if  args.config == None:
         print('No config file name provided.')
-        exit()
     configName = p.splitext(configName)[0]
 
-    inputScript = importlib.import_module(configName)
-    globals().update(vars(inputScript))
+    ## ADD CONFIG FILE TO PYTHONPATH ##
+    cwd = os.getcwd()
+    configPath = p.join(cwd,configName)
+    sys.path.append(configPath)
+    ## IMPORT CONFIG FILE AND RETURN VARIABLES CONTAINED ##
+    try:
+        config_module = __import__(configName)
+        (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
+          orbAtomsDict, cloudAtomsDict, orbRange, cloudRange)= config_module.inputs()
+        
+        return (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
+                orbAtomsDict, cloudAtomsDict, orbRange, cloudRange)
+    except ImportError:
+        print(f"Error: Can't  import module '{configName}'. Make sure the input exists!")
+        print("HOPE IS THE FIRST STEP ON THE ROAD TO DISAPPOINTMENT")
+        exit()
+########################################################################################
+def main():
+    ## LOAD USER INPUTS ##
+    (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
+                orbAtomsDict, cloudAtomsDict, orbRange, cloudRange) = read_inputs()
+    # MAKE OUTPUT DIRECTORY ##
+    os.makedirs(outDir)
+    # READ AMINO ACID TABLE INTO A DATAFRAME, GET LIST OF AMIO ACID NAMES ##
+    aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(aminoAcidTable)
 
+    # GET LISTS OF PDB IDS AND PATHS
+    idList, pdbList = getPdbList(inputDir)
+
+    # loop through permutations of orb and cloud values
+    jobCount = 0
+    totalJobCount = len(orbRange) * len(cloudRange)
+    # get a list of job inputs
+    jobData = []
+    for orbValue in orbRange:
+        for cloudValue in cloudRange:
+            jobCount += 1
+            jobProgress = f"[{str(jobCount)} / {str(totalJobCount)}]"
+            jobData.append([orbValue,cloudValue,jobProgress,idList, pdbList, outDir, aminoAcidNames, aminoAcidProperties])
+    #run_singlecore(jobData)
+    run_multprocessing(jobData)
+
+    print("\nAll features have been generated and saved!")
 
 ########################################################################################
 def process_pdbs(jobDetails):
@@ -111,31 +143,7 @@ def process_pdbs(jobDetails):
     return
 
 
-########################################################################################
-def main():
-    # load user inputs
-    read_inputs()
-    os.makedirs(outputDir)
-    # initialise amino acid data
-    aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(aminoAcidTable)
-    # get list of pdbFiles in pdbDir
-    idList, pdbList = getPdbList(inputDir)
 
-
-    # loop through permutations of orb and cloud values
-    jobCount = 0
-    totalJobCount = len(orbRange) * len(cloudRange)
-    # get a list of job inputs
-    jobData = []
-    for orbValue in orbRange:
-        for cloudValue in cloudRange:
-            jobCount += 1
-            jobProgress = f"[{str(jobCount)} / {str(totalJobCount)}]"
-            jobData.append([orbValue,cloudValue,jobProgress,idList, pdbList, outDir, aminoAcidNames, aminoAcidProperties])
-    #run_singlecore(jobData)
-    run_multprocessing(jobData)
-
-    print("\nAll features have been generated and saved!")
 ########################################################################################
 def run_singlecore(jobData):
     for jobDetails in jobData:
