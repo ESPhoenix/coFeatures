@@ -4,7 +4,7 @@ import os
 from os import path as p
 import sys
 import pandas as pd
-import multiprocessing as mp
+import multiprocessing
 import argpass
 from itertools import product
 import multiprocessing
@@ -52,9 +52,9 @@ def main():
     # GET LISTS OF PDB IDS AND PATHS
     idList = getPdbList(inputDir)
 
-    #jobOrder = list(product(idList,orbRange,cloudRange))
-
-    jobOrder = [(a, b, c) for a, b, c in product(idList, orbRange, cloudRange)]
+    jobOrder = list(product(idList,orbRange,cloudRange))
+    print(jobOrder)
+ #   jobOrder = [(a, b, c) for a, b, c in product(idList, orbRange, cloudRange)]
 
 
     process_pdbs_multicore(jobOrder = jobOrder,
@@ -112,8 +112,6 @@ def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
     if p.isfile(outputCsv):
         return
     # INITIALISE LIST TO STORE ALL FEATURE DATAFRAMES ##
-    featuresList=[]
-
     pdbDf=pdb2df(pdbFile)
     cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,
                                                           cofactorNames=cofactorNames, 
@@ -121,7 +119,6 @@ def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
     ## SKIP IF MORE THAN ONE OR ZERO COFACTORS PRESENT ##
     if cofactorCountWrong:
         return
-    
 
     ## GET ORB, CLOUD, AND PROTEIN REGION DATAFRAMES ##
     orbDf = gen_orb_region(orbAtomsDict=orbAtomsDict,
