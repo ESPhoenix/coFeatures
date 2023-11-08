@@ -1,9 +1,9 @@
 import numpy as np        
 def inputs():
         # directory information
-        inputDir = "/home/eugene/FeatureGeneration/coFeatures_inputs"
-        outDir = "/home/eugene/FeatureGeneration/coFeatures_features"
-        aminoAcidTable="/home/eugene/FeatureGeneration/tableAmm.txt"
+        inputDir = "/home/esp/featureGenerationMethods/coFeatures/test_pdbs"
+        outDir = "/home/esp/featureGenerationMethods/coFeatures/features"
+        aminoAcidTable="/home/esp/featureGenerationMethods/coFeatures/amino_acid_properties.txt"
         # cofactor information
         cofactorNames = ["FAD", "FMN"]
         keyAtomsDict = {

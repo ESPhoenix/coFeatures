@@ -6,6 +6,9 @@ import sys
 import pandas as pd
 import multiprocessing as mp
 import argpass
+from itertools import product
+import multiprocessing
+from tqdm import tqdm
 ## coFeatures SPESIFIC MODULES ##
 from utils_coFeatures import *
 from modules_coFeatures import *
@@ -43,119 +46,157 @@ def main():
     (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
                 orbAtomsDict, cloudAtomsDict, orbRange, cloudRange) = read_inputs()
     # MAKE OUTPUT DIRECTORY ##
-    os.makedirs(outDir)
+    os.makedirs(outDir,exist_ok=True)
     # READ AMINO ACID TABLE INTO A DATAFRAME, GET LIST OF AMIO ACID NAMES ##
     aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(aminoAcidTable)
-
     # GET LISTS OF PDB IDS AND PATHS
-    idList, pdbList = getPdbList(inputDir)
+    idList = getPdbList(inputDir)
 
-    # loop through permutations of orb and cloud values
-    jobCount = 0
-    totalJobCount = len(orbRange) * len(cloudRange)
-    # get a list of job inputs
-    jobData = []
-    for orbValue in orbRange:
-        for cloudValue in cloudRange:
-            jobCount += 1
-            jobProgress = f"[{str(jobCount)} / {str(totalJobCount)}]"
-            jobData.append([orbValue,cloudValue,jobProgress,idList, pdbList, outDir, aminoAcidNames, aminoAcidProperties])
-    #run_singlecore(jobData)
-    run_multprocessing(jobData)
+    #jobOrder = list(product(idList,orbRange,cloudRange))
 
-    print("\nAll features have been generated and saved!")
+    jobOrder = [(a, b, c) for a, b, c in product(idList, orbRange, cloudRange)]
 
-########################################################################################
-def process_pdbs(jobDetails):
-    # unpack jobData into individual variables
-    orbValue,cloudValue,jobProgress,idList, pdbList,outDir,aminoAcidNames,aminoAcidProperties = jobDetails
-    # initialise output file, check if it exists, if so, skip iteration.
-    outputCsv=p.join(outDir, f'orb_{str(orbValue)}_cloud_{str(cloudValue)}_features.csv')
-    if p.isfile(outputCsv):
-        print(f"-->\t{jobProgress}\tSkipping 'orb_{str(orbValue)}_cloud_{str(cloudValue)}_features.csv")
-        return
-    # initialise a list for stocloud dataframes of features 
-    print(f"-->\t{jobProgress}\tMaking coFeatures for orb_{str(orbValue)}_cloud_{str(cloudValue)}_features.csv...")
-    featuresList=[]
-    # for each permute of orb + cloud, loop through all pdb files in pdbDir
 
-    for id, pdbFile in zip(idList, pdbList):
-        pdbDf=pdb2df(pdbFile)
-        cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,
-                                                          cofactorNames=cofactorNames, 
-                                                          protName=id)
-        if cofactorCountWrong:
-            continue
-        keyAtomCoords = get_key_atom_coords(pdbDf,keyAtomsDict,cofactorName)
-        # get coords of  orb center as a 3 element list ([x,y,z])
-        orbCenter = get_orb_center(orbAtomsDict=orbAtomsDict,
-                                   cofactorName=cofactorName,
-                                   pdbDf=pdbDf)
-        # get coords of heteroatoms in isoaloxizine cloud as a pandas dataframe
-        cloudCoordsDf = get_cloud_atom_coords(cloudAtomsDict=cloudAtomsDict,
-                                                cofactorName=cofactorName,
-                                                pdbDf=pdbDf)
-        # generate orb.X count features
-        orbCountDf = orb_count(orbCenter=orbCenter,
-                                pdbDf=pdbDf,
-                                aminoAcidNames=aminoAcidNames,
-                                orbValue=orbValue,
-                                proteinName=id, 
-                                cofactorName=cofactorName)
+    process_pdbs_multicore(jobOrder = jobOrder,
+                outDir =   outDir,
+                aminoAcidNames = aminoAcidNames,
+                aminoAcidProperties = aminoAcidProperties,
+                pdbDir = inputDir,
+                cofactorNames = cofactorNames,
+                keyAtomsDict = keyAtomsDict,
+                orbAtomsDict = orbAtomsDict,
+                cloudAtomsDict = cloudAtomsDict)
+    
+    #process_pdbs_singlecore(jobOrder = jobOrder,
+    #             outDir =   outDir,
+    #             aminoAcidNames = aminoAcidNames,
+    #             aminoAcidProperties = aminoAcidProperties,
+    #             pdbDir = inputDir,
+    #             cofactorNames = cofactorNames,
+    #             keyAtomsDict = keyAtomsDict,
+    #             orbAtomsDict = orbAtomsDict,
+    #             cloudAtomsDict = cloudAtomsDict)
+    
+    merge_temporary_csvs(outDir = outDir,
+                        orbRange = orbRange,
+                        cloudRange = cloudRange)
+
  
-        # generate cloud.X count features
-        cloudCountDf = cloud_count(cloudCoordsDf=cloudCoordsDf,
-                                    pdbDf=pdbDf,
-                                    aminoAcidNames=aminoAcidNames,
-                                    cloudValue=cloudValue,
-                                    proteinName=id)
-        # generate protein.X count features
-        proteinCountDf = protein_count(pdbDf=pdbDf,
-                                        aminoAcidNames=aminoAcidNames,
-                                        proteinName=id)
+    print("\nAll features have been generated and saved!")
+########################################################################################
+def  process_pdbs_singlecore(jobOrder, outDir, aminoAcidNames, aminoAcidProperties,
+                  pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+    for jobDetails in jobOrder:
+        process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
+                              pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict)
+########################################################################################
+def process_pdbs_multicore(jobOrder, outDir, aminoAcidNames, aminoAcidProperties,
+                  pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+    num_processes = multiprocessing.cpu_count()
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        pool.starmap(process_pdbs_worker,
+                     tqdm( [(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
+                              pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict) for jobDetails in jobOrder],
+                            total = len(jobOrder)))
 
-        # fill in amino acid properties into dataframe using amino acid counts
-        propertiesFeaturesDf = cloud_orb_protein_properties(orbCountDf=orbCountDf,
-                                                            cloudCountDf=cloudCountDf,
-                                                            proteinCountDf=proteinCountDf,
-                                                            aminoAcidProperties=aminoAcidProperties,
-                                                            aminoAcidNames = aminoAcidNames, 
-                                                            proteinName=id)
-        # fill in amino acid properties near to key atoms
-        keyAtomFeaturesDf = get_key_atom_features(keyAtomCoords=keyAtomCoords,
-                                                    pdbDf=pdbDf,
-                                                    aminoAcidNames=aminoAcidNames,
-                                                    aminoAcidProperties=aminoAcidProperties,
-                                                    proteinName=id,
-                                                    cofactorName=cofactorName)
-        # combine features dataframes and 
-        featuresConcat = [orbCountDf,cloudCountDf,proteinCountDf,propertiesFeaturesDf,keyAtomFeaturesDf]
-   #     featuresNames = ["orbCountDf","cloudCountDf","proteinCountDf","propertiesFeaturesDf","keyAtomFeaturesDf"]
+########################################################################################
+
+def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
+                        pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+    ## UNPACK JOB DETAILS INTO VARIABLES ##
+    pdbId, orbValue, cloudValue = jobDetails
+    pdbFile = p.join(pdbDir,f"{pdbId}.pdb")
+
+    ## INITIALSE TEMPORARY OUTPUT FILE, SKIP IF IT ALREADY EXISTS ##
+    outputCsv=p.join(outDir, f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.tmp")
+    if p.isfile(outputCsv):
+        return
+    # INITIALISE LIST TO STORE ALL FEATURE DATAFRAMES ##
+    featuresList=[]
+
+    pdbDf=pdb2df(pdbFile)
+    cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,
+                                                          cofactorNames=cofactorNames, 
+                                                          protName=pdbId)
+    ## SKIP IF MORE THAN ONE OR ZERO COFACTORS PRESENT ##
+    if cofactorCountWrong:
+        return
+    
+
+    ## GET ORB, CLOUD, AND PROTEIN REGION DATAFRAMES ##
+    orbDf = gen_orb_region(orbAtomsDict=orbAtomsDict,
+                           cofactorName=cofactorName,
+                           pdbDf=pdbDf,
+                           orbValue=orbValue)
+    cloudDf = gen_cloud_region(cloudAtomsDict=cloudAtomsDict,
+                           cofactorName=cofactorName,
+                           pdbDf=pdbDf,
+                           cloudValue=cloudValue)
+    proteinDf = gen_protein_region(pdbDf=pdbDf,
+                                   cofactorName=cofactorName)
+    
+    ## COUNT ELEMENTS IN REGIONS ##
+    orbElementCountDf       = element_count_in_region(regionDf=orbDf,
+                                                        regionName="orb",
+                                                        proteinName=pdbId)
+    cloudElementCountDf     = element_count_in_region(regionDf=cloudDf,
+                                                        regionName="cloud",
+                                                        proteinName=pdbId)
+    proteinElementCountDf   = element_count_in_region(regionDf=proteinDf,
+                                                        regionName="protein",
+                                                        proteinName=pdbId)
+    
+    ## COUNT AMINO ACIDS IN REGIONS ##
+    orbAACountDf            = amino_acid_count_in_region(regionDf=orbDf,
+                                              regionName="orb",
+                                              proteinName=pdbId,
+                                              aminoAcidNames=aminoAcidNames)
+    cloudAACountDf          = amino_acid_count_in_region(regionDf=cloudDf,
+                                                regionName="cloud",
+                                                proteinName=pdbId,
+                                                aminoAcidNames=aminoAcidNames)
+    proteinAACountDf        = amino_acid_count_in_region(regionDf=proteinDf,
+                                                  regionName="protein",
+                                                  proteinName=pdbId,
+                                                  aminoAcidNames=aminoAcidNames)
+    ## AMINO ACID PROPERTIES FOR REGIONS ##
+    orbPropertiesDf         = calculate_amino_acid_properties_in_region(aaCountDf=orbAACountDf,
+                                                                        aminoAcidProperties=aminoAcidProperties,
+                                                                        aminoAcidNames=aminoAcidNames,
+                                                                        proteinName=pdbId,
+                                                                        regionName="orb")
+    cloudPropertiesDf       = calculate_amino_acid_properties_in_region(aaCountDf=cloudAACountDf,
+                                                                        aminoAcidProperties=aminoAcidProperties,
+                                                                        aminoAcidNames=aminoAcidNames,
+                                                                        proteinName=pdbId,
+                                                                        regionName="cloud")
+    proteinPropertiesDf     = calculate_amino_acid_properties_in_region(aaCountDf=proteinAACountDf,
+                                                                        aminoAcidProperties=aminoAcidProperties,
+                                                                        aminoAcidNames=aminoAcidNames,
+                                                                        proteinName=pdbId,
+                                                                        regionName="protein")
+    ## EXTRACT COORDINATES OF USER-DEFINED KEY ATOMS ##
+    keyAtomCoords = get_key_atom_coords(pdbDf,keyAtomsDict,cofactorName) 
+    ## NEAREST AMINO ACIDS TO KEY ATOMS ##
+    keyAtomsFeaturesDf        = nearest_n_residues_to_key_atom(keyAtomCoords=keyAtomCoords,
+                                                             pdbDf=pdbDf,
+                                                             aminoAcidNames=aminoAcidNames,
+                                                             aminoAcidProperties=aminoAcidProperties,
+                                                             proteinName=pdbId,
+                                                             cofactorName=cofactorName,
+                                                             nNearestList=[1,3])
+    # combine features dataframes and 
+    featuresToConcat = [orbElementCountDf, cloudElementCountDf, proteinElementCountDf,
+                        orbAACountDf, cloudAACountDf, proteinAACountDf,
+                        orbPropertiesDf, cloudPropertiesDf, proteinPropertiesDf,
+                        keyAtomsFeaturesDf]
 
 
-        featuresDf=pd.concat(featuresConcat,axis=1)
-        featuresList.append(featuresDf)
-    #    featuresList = [df.reset_index(drop=True) for df in featuresList]
+    featuresDf=pd.concat(featuresToConcat,axis=1)
 
-    allFeaturesDf=pd.concat(featuresList,axis=0)
-    print(allFeaturesDf)
-    allFeaturesDf.to_csv(outputCsv,index=True, sep=",")
+    tmpSaveFile = p.join(outDir,f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.csv")
+    featuresDf.to_csv(tmpSaveFile,index=True, sep=",")
     return
-
-
-
-########################################################################################
-def run_singlecore(jobData):
-    for jobDetails in jobData:
-        process_pdbs(jobDetails)    
-########################################################################################
-def run_multprocessing(jobData):
-    num_cores = mp.cpu_count()
-    pool = mp.Pool(processes=num_cores)
-    # run with multiprocessing
-    pool.map(process_pdbs,jobData)
-    pool.close()
-    pool.join()           
 ########################################################################################
 if __name__ == "__main__":
     main()

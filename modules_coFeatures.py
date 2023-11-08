@@ -3,12 +3,7 @@ import os
 from os import path as p
 import numpy as np
 import pandas as pd
-import multiprocessing as mp
-import importlib
-import argpass
-import multiprocessing_logging
-import logging
-
+pd.options.mode.chained_assignment = None
 ########################################################################################
 
 def initialiseAminoAcidInformation(aminoAcidTable):
@@ -34,8 +29,7 @@ def getPdbList(dir):
         fileData = p.splitext(file)
         if fileData[1] == '.pdb':
             idList.append(fileData[0])
-            pdbList.append(p.join(dir,file))
-    return idList, pdbList
+    return idList
 
 ########################################################################################
 def find_cofactor(cofactorNames,pdbDf,protName):
@@ -54,11 +48,11 @@ def find_cofactor(cofactorNames,pdbDf,protName):
     # if cofactor count is 1, identify the cofactor and retirn as a variable
     cofactorCountWrong = False
     if countTrue == 0:
-        print(f"no cofactor found in {protName}")
+       # print(f"no cofactor found in {protName}")
         cofactorCountWrong = True
         return None, cofactorCountWrong
     elif countTrue > 1:
-        print(f'{countTrue} cofactors found in {protName}, need only one!')
+        #print(f'{countTrue} cofactors found in {protName}, need only one!')
         cofactorCountWrong = True
         return None, cofactorCountWrong
     elif countTrue == 1:
@@ -96,9 +90,9 @@ def gen_orb_region(orbAtomsDict, cofactorName, pdbDf, orbValue):
     noCofactorDf = pdbDf[pdbDf["RES_NAME"] != cofactorName]
     
     ## CALCULATE DISTANCES BETWEEN PROTEIN ATOMS AND 
-    noCofactorDf["orb_DISTANCES"] = np.linalg.norm(noCofactorDf[["x", "y", "z"]].values - np.array(orbCenter), axis=1)
+    noCofactorDf.loc[:,"DISTANCES"] = np.linalg.norm(noCofactorDf[["X", "Y", "Z"]].values - np.array(orbCenter), axis=1)
     ## MAKE ORB DATAFRAME OUT OF ATOMS THAT ARE WITHIN ORBVALUE OF ORB CENTER
-    orbDf = pdbDf[pdbDf["orb_DISTANCES"] <= orbValue].copy()
+    orbDf = noCofactorDf[noCofactorDf["DISTANCES"] <= orbValue].copy()
 
     return orbDf
 ########################################################################################
@@ -119,7 +113,7 @@ def gen_cloud_region(cloudAtomsDict, cofactorName, pdbDf, cloudValue):
     for i, (x,y,z) in cloudCoordsDf.iterrows():
         ## CALCULATE DISTANCE BETWEEN CLOUD ATOMS AND PROTEIN ATOMS ##
         columnName=f'cloud_dist_atom_{i}'
-        noCofactorDf[columnName] = np.linalg.norm(noCofactorDf[["x", "y", "z"]].values - np.array(x,y,z), axis=1)
+        noCofactorDf.loc[:,columnName] = np.linalg.norm(noCofactorDf[["X", "Y", "Z"]].values - np.array([x,y,z]), axis=1)
 
     ## SEPARATE CLOUD DISTANCE COLUMNS ##
     cloudCols = [col for col in noCofactorDf.columns if col.startswith('cloud_dist_atom_')]
@@ -168,8 +162,8 @@ def amino_acid_count_in_region(regionDf, regionName, proteinName, aminoAcidNames
             aaCountDf.loc[:,f'{regionName}.{aminoAcid}'] = uniqueResiduesDf["RES_NAME"].value_counts()[aminoAcid]
         except:
             aaCountDf.loc[:,f'{regionName}.{aminoAcid}'] = 0
-        totalResidueCount+=aaCountDf.loc[:,f'{regionName}.{aminoAcid}']
-    aaCountDf.loc[:,f"{regionName}.total"] = totalResidueCount
+
+    aaCountDf.loc[:,f"{regionName}.total"] = aaCountDf.sum(axis=1)
     return aaCountDf
 ########################################################################################
 def calculate_amino_acid_properties_in_region(aaCountDf, aminoAcidNames, aminoAcidProperties, proteinName, regionName):
@@ -216,11 +210,13 @@ def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAc
     noCofactorDf = pdbDf[pdbDf["RES_NAME"] != cofactorName]
     ## LOOP THROUGH KEY ATOMS ##
     for keyAtomId, (x,y,z) in keyAtomCoords.iterrows():
+        coordsReshaped = np.array([x,y,z]).reshape(1,-1)
         ## CALCULATE DISTANCE TO KEY ATOM FOR ALL PROTEIN ATOMS ##
         columnName=f'{keyAtomId}_distance'
-        noCofactorDf[columnName] = np.linalg.norm(noCofactorDf[["x", "y", "z"]].values - np.array(x,y,z), axis=1)
+        noCofactorDf.loc[:,columnName] = np.linalg.norm((noCofactorDf[["X", "Y", "Z"]].values - coordsReshaped), axis=1)
         ## GET LIST OF UNIQUE RESIDUE NUMBERS ##
-        uniqueResidues = pdbDf['RES_SEQ'].unique()
+        uniqueResidues = noCofactorDf['RES_SEQ'].unique()
+
         ## FIND NEAREST ATOM IN EACH RESIDUE TO KEY ATOM ##
         nearestPointIndecies=[]
         for residueSeq in uniqueResidues:
@@ -229,7 +225,7 @@ def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAc
             nearestPointIndecies.append(nearestPointIdx)    
 
         ## GET NEW DATAFRAME CONTAINING ONLY NEAREST ATOMS OF EACH RESIDUE ##
-        nearestPointsResidues = pdbDf.loc[nearestPointIndecies]
+        nearestPointsResidues = noCofactorDf.loc[nearestPointIndecies]
         ## RESET INDEX ##
         nearestPointsResidues.reset_index(drop=True, inplace=True)
         ## SORT BY DISTANCE TO KEY ATOM ##
@@ -237,7 +233,7 @@ def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAc
         ## LOOP THROUGH NNEARESTLIST ##
         for nNearest in nNearestList:
             ## GET LIST OF N NEAREST RESIDUES TO KEY ATOM ##
-            nearestResidueList = nearestResiduesSorted.head(1)["RES_NAME"].to_list()
+            nearestResidueList = nearestResiduesSorted.head(nNearest)["RES_NAME"].to_list()
             ## GET PROPERTY VALUES ##
             for property in aminoAcidProperties:
                 propertyValue=0
@@ -247,5 +243,20 @@ def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAc
                 propertyValue = propertyValue / nNearest
                 ## ADD TO DATAFRAME ##
                 keyAtomFeaturesDf.loc[proteinName,f'{str(nNearest)}_{keyAtomId}.{property}'] = propertyValue
-        return keyAtomFeaturesDf
+
+    return keyAtomFeaturesDf
 ########################################################################################
+def merge_temporary_csvs(outDir,orbRange,cloudRange):
+    for orbValue in orbRange:
+        for cloudValue in cloudRange:
+            dfsToConcat = []
+            for file in os.listdir(outDir):
+                if not p.splitext(file)[1] == ".csv":
+                    continue
+                if f"{str(orbValue)}_{str(cloudValue)}" in file:
+                    df = pd.read_csv(p.join(outDir,file))
+                    dfsToConcat.append(df)
+                    os.remove(p.join(outDir,file))
+        featuresDf = pd.concat(dfsToConcat,axis=0)
+        saveFile = p.join(outDir,f"coFeatures_orb_{str(orbValue)}_cloud_{str(cloudValue)}.csv")
+        featuresDf.to_csv(saveFile,index=False, sep=",")
