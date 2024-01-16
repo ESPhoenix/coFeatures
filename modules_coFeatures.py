@@ -137,9 +137,11 @@ def element_count_in_region(regionDf,regionName,proteinName):
         columnNames.append(f"{regionName}.{element}")
     elementCountDf = pd.DataFrame(columns=columnNames,index=[proteinName])
     ## COUNT ELEMENTS IN REGION, RETURN ZERO IF REGION HAS NONE OR DOES NOT EXIST
+    regionDf['ELEMENT'] = regionDf['ATOM_NAME'].apply(lambda x: x[0]).copy()
+    elemCount = regionDf["ELEMENT"].value_counts()
     for element in ["C","N","O","S"]:
         try:
-            elementCountDf.loc[:,f'{regionName}.{element}'] = regionDf["ELEMENT"].value_counts()[element]
+            elementCountDf.loc[:,f'{regionName}.{element}'] = elemCount[element]
         except:
             elementCountDf.loc[:, f'{regionName}.{element}'] = 0
 

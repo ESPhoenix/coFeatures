@@ -1,11 +1,11 @@
 import numpy as np        
 def inputs():
         ## LOCATION OF YOUR PDB FILES
-        inputDir = "/home/esp/featureGenerationMethods/coFeatures/test_pdbs"       
+        inputDir = "/home/esp/dataset_generation/flavin_dataset/06_cofactor_complexes/cofactorComplexes"       
         ## WHERE DO YOU WANT YOUR OUTPUTS
-        outDir = "/home/esp/featureGenerationMethods/coFeatures/features"          
+        outDir = "/home/esp/Machine_Learning"          
         ## LOCATION OF AA PROPERTIES
-        aminoAcidTable="/home/esp/featureGenerationMethods/coFeatures/amino_acid_properties.txt" 
+        aminoAcidTable="/home/esp/scriptDevelopment/coFeatures/amino_acid_properties.txt" 
         # cofactor information
         ## LIST OF COFACTOR NAMES IN YOUR PDB FILES
         cofactorNames = ["FAD", "FMN"]
@@ -30,9 +30,9 @@ def inputs():
                         "C4X","C4","O4","N3","HN3","C2","O2","N1","C10"]
                         }
         ## LIST OF RADII FOR ORB REGION
-        orbRange = list(np.arange(6, 10))
+        orbRange = [14]
         ## LIST OF RADII FOR CLOUD REGION
-        cloudRange = list(np.arange(3, 7))                      
+        cloudRange = [4]                   
 
         return (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
                     orbAtomsDict, cloudAtomsDict, orbRange, cloudRange)

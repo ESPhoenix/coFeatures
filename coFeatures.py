@@ -53,8 +53,6 @@ def main():
     idList = getPdbList(inputDir)
 
     jobOrder = list(product(idList,orbRange,cloudRange))
-    print(jobOrder)
- #   jobOrder = [(a, b, c) for a, b, c in product(idList, orbRange, cloudRange)]
 
 
     process_pdbs_multicore(jobOrder = jobOrder,
