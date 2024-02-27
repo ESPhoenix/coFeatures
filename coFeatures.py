@@ -9,98 +9,75 @@ import argpass
 from itertools import product
 import multiprocessing
 from tqdm import tqdm
+import yaml
 ## coFeatures SPESIFIC MODULES ##
 from utils_coFeatures import *
 from modules_coFeatures import *
 ########################################################################################
 def read_inputs():
-    ## MAKE A PARSER TO READ --CONFIG FLAG ##
+    ## create an argpass parser, read config file, snip off ".py" if on the end of file
     parser = argpass.ArgumentParser()
     parser.add_argument("--config")
     args = parser.parse_args()
-    configName=args.config
-    ## DEAL WITH .PY EXTENSION IF PRESENT ##
-    if  args.config == None:
-        print('No config file name provided.')
-    configName = p.splitext(configName)[0]
 
-    ## ADD CONFIG FILE TO PYTHONPATH ##
-    cwd = os.getcwd()
-    configPath = p.join(cwd,configName)
-    sys.path.append(configPath)
-    ## IMPORT CONFIG FILE AND RETURN VARIABLES CONTAINED ##
-    try:
-        config_module = __import__(configName)
-        (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
-          orbAtomsDict, cloudAtomsDict, orbRange, cloudRange)= config_module.inputs()
-        
-        return (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
-                orbAtomsDict, cloudAtomsDict, orbRange, cloudRange)
-    except ImportError:
-        print(f"Error: Can't  import module '{configName}'. Make sure the input exists!")
-        print("HOPE IS THE FIRST STEP ON THE ROAD TO DISAPPOINTMENT")
-        exit()
+    config=args.config
+    ## Read config.yaml into a dictionary
+    with open(config,"r") as yamlFile:
+        config = yaml.safe_load(yamlFile) 
+
+    pathInfo = config["pathInfo"]
+    cofactorInfo = config["cofactorInfo"]
+    optionsInfo = config["optionsInfo"]
+
+    return pathInfo,cofactorInfo, optionsInfo
 ########################################################################################
 def main():
     ## LOAD USER INPUTS ##
-    (inputDir, outDir, aminoAcidTable, cofactorNames, keyAtomsDict,
-                orbAtomsDict, cloudAtomsDict, orbRange, cloudRange) = read_inputs()
+    pathInfo,cofactorInfo, optionsInfo = read_inputs()
     # MAKE OUTPUT DIRECTORY ##
-    os.makedirs(outDir,exist_ok=True)
+    os.makedirs(pathInfo["outDir"],exist_ok=True)
     # READ AMINO ACID TABLE INTO A DATAFRAME, GET LIST OF AMIO ACID NAMES ##
-    aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(aminoAcidTable)
     # GET LISTS OF PDB IDS AND PATHS
-    idList = getPdbList(inputDir)
+    idList = getPdbList(pathInfo["inputDir"])
 
-    jobOrder = list(product(idList,orbRange,cloudRange))
+    jobOrder = list(product(idList,optionsInfo["orbRange"],optionsInfo["cloudRange"]))
 
+    # process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo)
 
-    process_pdbs_multicore(jobOrder = jobOrder,
-                outDir =   outDir,
-                aminoAcidNames = aminoAcidNames,
-                aminoAcidProperties = aminoAcidProperties,
-                pdbDir = inputDir,
-                cofactorNames = cofactorNames,
-                keyAtomsDict = keyAtomsDict,
-                orbAtomsDict = orbAtomsDict,
-                cloudAtomsDict = cloudAtomsDict)
     
-    #process_pdbs_singlecore(jobOrder = jobOrder,
-    #             outDir =   outDir,
-    #             aminoAcidNames = aminoAcidNames,
-    #             aminoAcidProperties = aminoAcidProperties,
-    #             pdbDir = inputDir,
-    #             cofactorNames = cofactorNames,
-    #             keyAtomsDict = keyAtomsDict,
-    #             orbAtomsDict = orbAtomsDict,
-    #             cloudAtomsDict = cloudAtomsDict)
+    process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo)
     
-    merge_temporary_csvs(outDir = outDir,
-                        orbRange = orbRange,
-                        cloudRange = cloudRange)
+    merge_temporary_csvs(outDir = pathInfo["outDir"],
+                        orbRange = optionsInfo["orbRange"],
+                        cloudRange = optionsInfo["cloudRange"])
 
  
     print("\nAll features have been generated and saved!")
 ########################################################################################
-def  process_pdbs_singlecore(jobOrder, outDir, aminoAcidNames, aminoAcidProperties,
-                  pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+def  process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo):
+    
+    aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(pathInfo["aminoAcidTable"])
+
     for jobDetails in jobOrder:
-        process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
-                              pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict)
+        process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties)
 ########################################################################################
-def process_pdbs_multicore(jobOrder, outDir, aminoAcidNames, aminoAcidProperties,
-                  pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+def process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo):
+    
+    aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(pathInfo["aminoAcidTable"])
     num_processes = multiprocessing.cpu_count()
     with multiprocessing.Pool(processes=num_processes) as pool:
         pool.starmap(process_pdbs_worker,
-                     tqdm( [(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
-                              pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict) for jobDetails in jobOrder],
+                     tqdm( [(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties) for jobDetails in jobOrder],
                             total = len(jobOrder)))
 
 ########################################################################################
 
-def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
-                        pdbDir,cofactorNames, keyAtomsDict,orbAtomsDict, cloudAtomsDict):
+def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties):
+    ## UNPACK pathInfo
+    pdbDir = pathInfo["inputDir"]
+    outDir = pathInfo["outDir"]
+
+
     ## UNPACK JOB DETAILS INTO VARIABLES ##
     pdbId, orbValue, cloudValue = jobDetails
     pdbFile = p.join(pdbDir,f"{pdbId}.pdb")
@@ -111,19 +88,17 @@ def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
         return
     # INITIALISE LIST TO STORE ALL FEATURE DATAFRAMES ##
     pdbDf=pdb2df(pdbFile)
-    cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,
-                                                          cofactorNames=cofactorNames, 
-                                                          protName=pdbId)
+    cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,cofactorInfo=cofactorInfo)
     ## SKIP IF MORE THAN ONE OR ZERO COFACTORS PRESENT ##
     if cofactorCountWrong:
         return
 
     ## GET ORB, CLOUD, AND PROTEIN REGION DATAFRAMES ##
-    orbDf = gen_orb_region(orbAtomsDict=orbAtomsDict,
+    orbDf = gen_orb_region(orbAtoms=cofactorInfo[cofactorName]["orbAtoms"],
                            cofactorName=cofactorName,
                            pdbDf=pdbDf,
                            orbValue=orbValue)
-    cloudDf = gen_cloud_region(cloudAtomsDict=cloudAtomsDict,
+    cloudDf = gen_cloud_region(cloudAtoms=cofactorInfo[cofactorName]["cloudAtoms"],
                            cofactorName=cofactorName,
                            pdbDf=pdbDf,
                            cloudValue=cloudValue)
@@ -171,7 +146,9 @@ def process_pdbs_worker(jobDetails, outDir, aminoAcidNames, aminoAcidProperties,
                                                                         proteinName=pdbId,
                                                                         regionName="protein")
     ## EXTRACT COORDINATES OF USER-DEFINED KEY ATOMS ##
-    keyAtomCoords = get_key_atom_coords(pdbDf,keyAtomsDict,cofactorName) 
+    keyAtomCoords = get_key_atom_coords(pdbDf = pdbDf,
+                                        keyAtoms = cofactorInfo[cofactorName]["keyAtoms"],
+                                        cofactorName = cofactorName) 
     ## NEAREST AMINO ACIDS TO KEY ATOMS ##
     keyAtomsFeaturesDf        = nearest_n_residues_to_key_atom(keyAtomCoords=keyAtomCoords,
                                                              pdbDf=pdbDf,

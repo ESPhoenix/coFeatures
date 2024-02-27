@@ -1,0 +1,18 @@
+pathInfo:
+  inputDir: "/home/esp/scriptDevelopment/coFeatures/test_pdbs"
+  outDir: "/home/esp/scriptDevelopment/coFeatures/features"
+  aminoAcidTable: "/home/esp/scriptDevelopment/coFeatures/amino_acid_properties.txt"
+
+cofactorInfo:
+  FMN:
+    keyAtoms: ["N1","N3","N5"]
+    orbAtoms: ["N10","C10","C4A","N5","C5A","C9A"]
+    cloudAtoms: ["N10","C9A","C9","C8","C8M","C7","C7M","C6","C5A","N5","C4A","C4","O4","N3","HN3","C2","O2","N1","C10"]
+  FAD:
+    keyAtoms: ["N1","N3","N5"]
+    orbAtoms: ["N10","C10","C4X","N5","C5X","C9A"]
+    cloudAtoms: ["N10","C9A","C9","C8","C8M","C7","C7M","C6","C5X","N5","C4X","C4","O4","N3","HN3","C2","O2","N1","C10"]
+
+optionsInfo:
+  orbRange: [14]
+  cloudRange: [4]

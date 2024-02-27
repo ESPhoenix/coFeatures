@@ -32,27 +32,25 @@ def getPdbList(dir):
     return idList
 
 ########################################################################################
-def find_cofactor(cofactorNames,pdbDf,protName):
+def find_cofactor(cofactorInfo,pdbDf):
     # quick check to see what cofactor is present in a pdb file
     # Only works if there is one cofactor - will break with two
     # returns a dictionary of true/false for all cofactors present in confactorNames input variable
     cofactorCheck = {}
-    for cofactor in cofactorNames:
-        if pdbDf["RES_NAME"].str.contains(cofactor).any():
-            cofactorCheck.update({cofactor:True})
+    for cofactorName in cofactorInfo:
+        if pdbDf["RES_NAME"].str.contains(cofactorName).any():
+            cofactorCheck.update({cofactorName:True})
         else:
-            cofactorCheck.update({cofactor:False})
+            cofactorCheck.update({cofactorName:False})
     # count number of cofactors if interest present
     countTrue = sum(value for value in cofactorCheck.values() if value)
     # if cofactor count is not 1, throw an error message, then this structure will be skipped
     # if cofactor count is 1, identify the cofactor and retirn as a variable
     cofactorCountWrong = False
     if countTrue == 0:
-       # print(f"no cofactor found in {protName}")
         cofactorCountWrong = True
         return None, cofactorCountWrong
     elif countTrue > 1:
-        #print(f'{countTrue} cofactors found in {protName}, need only one!')
         cofactorCountWrong = True
         return None, cofactorCountWrong
     elif countTrue == 1:
@@ -62,8 +60,7 @@ def find_cofactor(cofactorNames,pdbDf,protName):
                 return cofactorName, cofactorCountWrong
 
 ########################################################################################
-def get_key_atom_coords(pdbDf,keyAtomsDict,cofactorName):
-    keyAtoms = keyAtomsDict.get(cofactorName,[])
+def get_key_atom_coords(pdbDf,keyAtoms,cofactorName):
 
     keyAtomCoords=pd.DataFrame(columns=["X","Y","Z"], index=keyAtoms)
 
@@ -75,9 +72,8 @@ def get_key_atom_coords(pdbDf,keyAtomsDict,cofactorName):
         keyAtomCoords.loc[atomId] = [xCoord,yCoord,zCoord]
     return keyAtomCoords
 ########################################################################################
-def gen_orb_region(orbAtomsDict, cofactorName, pdbDf, orbValue):
+def gen_orb_region(orbAtoms, cofactorName, pdbDf, orbValue):
     ## FIND ORB ATOMS IN PDB DATAFRAME ##
-    orbAtoms = orbAtomsDict.get(cofactorName,[])
     cofactorRows = pdbDf[pdbDf["RES_NAME"] == cofactorName]
     orbRows = cofactorRows[cofactorRows["ATOM_NAME"].isin(orbAtoms)]
     # GET ORB CENTER AS AVERAGE POSITION OF ORB ATOMS ##
@@ -96,9 +92,8 @@ def gen_orb_region(orbAtomsDict, cofactorName, pdbDf, orbValue):
 
     return orbDf
 ########################################################################################
-def gen_cloud_region(cloudAtomsDict, cofactorName, pdbDf, cloudValue):
+def gen_cloud_region(cloudAtoms, cofactorName, pdbDf, cloudValue):
     ## FIND CLOUD ATOMS IN PDB DATAFRAME ##
-    cloudAtoms = cloudAtomsDict.get(cofactorName,[])
     cofactorRows = pdbDf[pdbDf["RES_NAME"] == cofactorName]
     cloudRows = cofactorRows[cofactorRows["ATOM_NAME"].isin(cloudAtoms)]
 
