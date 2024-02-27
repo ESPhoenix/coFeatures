@@ -16,3 +16,7 @@ cofactorInfo:
 optionsInfo:
   orbRange: [14]
   cloudRange: [4]
+  genAminoAcidCategories: True
+  keepIndividualCounts: False
+  normaliseCounts: True
+  keepTotalCounts: False

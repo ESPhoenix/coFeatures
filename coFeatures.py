@@ -42,10 +42,10 @@ def main():
 
     jobOrder = list(product(idList,optionsInfo["orbRange"],optionsInfo["cloudRange"]))
 
-    # process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo)
+    process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo, optionsInfo)
 
     
-    process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo)
+    # process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo, optionsInfo)
     
     merge_temporary_csvs(outDir = pathInfo["outDir"],
                         orbRange = optionsInfo["orbRange"],
@@ -54,25 +54,25 @@ def main():
  
     print("\nAll features have been generated and saved!")
 ########################################################################################
-def  process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo):
+def  process_pdbs_singlecore(jobOrder, pathInfo, cofactorInfo, optionsInfo):
     
     aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(pathInfo["aminoAcidTable"])
 
     for jobDetails in jobOrder:
-        process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties)
+        process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAcidNames, aminoAcidProperties)
 ########################################################################################
-def process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo):
+def process_pdbs_multicore(jobOrder, pathInfo, cofactorInfo, optionsInfo):
     
     aminoAcidNames, aminoAcidProperties = initialiseAminoAcidInformation(pathInfo["aminoAcidTable"])
     num_processes = multiprocessing.cpu_count()
     with multiprocessing.Pool(processes=num_processes) as pool:
         pool.starmap(process_pdbs_worker,
-                     tqdm( [(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties) for jobDetails in jobOrder],
+                     tqdm( [(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAcidNames, aminoAcidProperties) for jobDetails in jobOrder],
                             total = len(jobOrder)))
 
 ########################################################################################
 
-def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, aminoAcidProperties):
+def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAcidNames, aminoAcidProperties):
     ## UNPACK pathInfo
     pdbDir = pathInfo["inputDir"]
     outDir = pathInfo["outDir"]
@@ -165,6 +165,16 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, aminoAcidNames, amin
 
 
     featuresDf=pd.concat(featuresToConcat,axis=1)
+
+    if optionsInfo["genAminoAcidCategories"]:
+        make_amino_acid_category_counts(dataDf = featuresDf,
+                                        optionsInfo = optionsInfo)
+
+    if optionsInfo["normaliseCounts"]:
+        normalise_counts_by_size(dataDf = featuresDf,
+                                aminoAcidNames = aminoAcidNames,
+                                optionsInfo= optionsInfo)
+
 
     tmpSaveFile = p.join(outDir,f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.csv")
     featuresDf.to_csv(tmpSaveFile,index=True, sep=",")
