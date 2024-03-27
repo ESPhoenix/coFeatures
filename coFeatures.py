@@ -81,7 +81,6 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAc
     ## UNPACK JOB DETAILS INTO VARIABLES ##
     pdbId, orbValue, cloudValue = jobDetails
     pdbFile = p.join(pdbDir,f"{pdbId}.pdb")
-
     ## INITIALSE TEMPORARY OUTPUT FILE, SKIP IF IT ALREADY EXISTS ##
     outputCsv=p.join(outDir, f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.tmp")
     if p.isfile(outputCsv):

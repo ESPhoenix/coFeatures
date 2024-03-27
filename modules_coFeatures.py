@@ -277,7 +277,10 @@ def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAc
             for property in aminoAcidProperties:
                 propertyValue=0
                 for aminoAcid in nearestResidueList:
-                    value = aminoAcidProperties.at[aminoAcid,property]
+                    try:
+                        value = aminoAcidProperties.at[aminoAcid,property]
+                    except:
+                        value = 0
                     propertyValue += value 
                 propertyValue = propertyValue / nNearest
                 ## ADD TO DATAFRAME ##

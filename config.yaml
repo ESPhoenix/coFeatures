@@ -1,7 +1,7 @@
 pathInfo:
-  inputDir: "/home/esp/scriptDevelopment/coFeatures/test_pdbs"
-  outDir: "/home/esp/scriptDevelopment/coFeatures/features"
-  aminoAcidTable: "/home/esp/scriptDevelopment/coFeatures/amino_acid_properties.txt"
+  inputDir: "/home/esp/Machine_Learning/11_pdb_dataset/01_dataset_pdbs"
+  outDir: "/home/esp/Machine_Learning/11_pdb_dataset/02_features"
+  aminoAcidTable: "/home/esp/Machine_Learning/11_pdb_dataset/00_scripts/coFeatures/amino_acid_properties.txt"
 
 cofactorInfo:
   FMN:
