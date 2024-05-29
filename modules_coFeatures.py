@@ -65,7 +65,6 @@ def initialiseAminoAcidInformation(aminoAcidTable):
 
 ########################################################################################
 def getPdbList(dir):
-    pdbList=[]
     idList=[]
     for file in os.listdir(dir):
         fileData = p.splitext(file)
@@ -78,60 +77,70 @@ def find_cofactor(cofactorInfo,pdbDf):
     # quick check to see what cofactor is present in a pdb file
     # Only works if there is one cofactor - will break with two
     # returns a dictionary of true/false for all cofactors present in confactorNames input variable
-    cofactorCheck = {}
-    for cofactorName in cofactorInfo:
-        if pdbDf["RES_NAME"].str.contains(cofactorName).any():
-            cofactorCheck.update({cofactorName:True})
-        else:
-            cofactorCheck.update({cofactorName:False})
-    # count number of cofactors if interest present
-    countTrue = sum(value for value in cofactorCheck.values() if value)
-    # if cofactor count is not 1, throw an error message, then this structure will be skipped
-    # if cofactor count is 1, identify the cofactor and retirn as a variable
-    cofactorCountWrong = False
-    if countTrue == 0:
-        cofactorCountWrong = True
-        return None, cofactorCountWrong
-    elif countTrue > 1:
-        cofactorCountWrong = True
-        return None, cofactorCountWrong
-    elif countTrue == 1:
-        for key, value in cofactorCheck.items():
-            if value:
-                cofactorName = key
-                return cofactorName, cofactorCountWrong
+    cofactorNames = [key for key in cofactorInfo.keys()]
+    cofactorDf = pdbDf[pdbDf["RES_NAME"].isin(cofactorNames)]
+    if len(cofactorDf) == 0:
+        return 0, 0
+    
+    uniqueCofactorNames = cofactorDf["RES_NAME"].unique().tolist()
+    cofactorCount = 0
+    uniqueChains = cofactorDf["CHAIN_ID"].unique().tolist()
+    for chainId in uniqueChains:
+        chainDf = cofactorDf[cofactorDf["CHAIN_ID"] == chainId]
+        uniqueResSeqs = chainDf["RES_SEQ"].unique().tolist()
+        cofactorCount += len(uniqueResSeqs)
+
+    
+    return cofactorCount , uniqueCofactorNames
+
+
+
+
 
 ########################################################################################
 def get_key_atom_coords(pdbDf,keyAtoms,cofactorName):
-
-    keyAtomCoords=pd.DataFrame(columns=["X","Y","Z"], index=keyAtoms)
-
-    cofactorRows = pdbDf[pdbDf["RES_NAME"] == cofactorName]
-    for atomId in keyAtoms:
-        xCoord = cofactorRows.loc[cofactorRows["ATOM_NAME"] == atomId, "X"].values
-        yCoord = cofactorRows.loc[cofactorRows["ATOM_NAME"] == atomId, "Y"].values
-        zCoord = cofactorRows.loc[cofactorRows["ATOM_NAME"] == atomId, "Z"].values
-        keyAtomCoords.loc[atomId] = [xCoord,yCoord,zCoord]
-    return keyAtomCoords
+    cofactorDf = pdbDf[pdbDf["RES_NAME"] == cofactorName]
+    ## assumption! different cofactors are stored with different chainIDs!
+    uniqueChains = cofactorDf["CHAIN_ID"].unique().tolist()
+    keyAtomCoordsList = []
+    for chainId in uniqueChains:
+        chainDf = cofactorDf[cofactorDf["CHAIN_ID"] == chainId]
+        for resId in chainDf["RES_SEQ"].unique().tolist():
+            resDf = chainDf[chainDf["RES_SEQ"] == resId]
+            keyAtomCoords=pd.DataFrame(columns=["X","Y","Z"], index=keyAtoms)
+            for atomId in keyAtoms:
+                xCoord = resDf.loc[resDf["ATOM_NAME"] == atomId, "X"].values
+                yCoord = resDf.loc[chainDf["ATOM_NAME"] == atomId, "Y"].values
+                zCoord = resDf.loc[resDf["ATOM_NAME"] == atomId, "Z"].values
+                keyAtomCoords.loc[atomId] = [xCoord,yCoord,zCoord]
+            keyAtomCoordsList.append(keyAtomCoords)
+    return keyAtomCoordsList
 ########################################################################################
 def gen_orb_region(orbAtoms, cofactorName, pdbDf, orbValue):
-    ## FIND ORB ATOMS IN PDB DATAFRAME ##
-    cofactorRows = pdbDf[pdbDf["RES_NAME"] == cofactorName]
-    orbRows = cofactorRows[cofactorRows["ATOM_NAME"].isin(orbAtoms)]
-    # GET ORB CENTER AS AVERAGE POSITION OF ORB ATOMS ##
-    orbCenter=[]
-    orbCenter.append(orbRows["X"].mean())
-    orbCenter.append(orbRows["Y"].mean())
-    orbCenter.append(orbRows["Z"].mean())
-
+    
     ## REMOVE COFACTOR FROM PDB DATAFRAME ##
     noCofactorDf = pdbDf[pdbDf["RES_NAME"] != cofactorName]
-    
-    ## CALCULATE DISTANCES BETWEEN PROTEIN ATOMS AND 
-    noCofactorDf.loc[:,"DISTANCES"] = np.linalg.norm(noCofactorDf[["X", "Y", "Z"]].values - np.array(orbCenter), axis=1)
-    ## MAKE ORB DATAFRAME OUT OF ATOMS THAT ARE WITHIN ORBVALUE OF ORB CENTER
-    orbDf = noCofactorDf[noCofactorDf["DISTANCES"] <= orbValue].copy()
+    cofactorDf = pdbDf[pdbDf["RES_NAME"] == cofactorName]
+    uniqueChains = cofactorDf["CHAIN_ID"].unique().tolist()
+    keyAtomCoordsList = []
+    orbDfs = []
+    for chainId in uniqueChains:
+        chainDf = cofactorDf[cofactorDf["CHAIN_ID"] == chainId]
 
+        ## FIND ORB ATOMS IN PDB DATAFRAME ##
+        orbDf = chainDf[chainDf["ATOM_NAME"].isin(orbAtoms)]
+        # GET ORB CENTER AS AVERAGE POSITION OF ORB ATOMS ##
+        orbCenter=[]
+        orbCenter.append(orbDf["X"].mean())
+        orbCenter.append(orbDf["Y"].mean())
+        orbCenter.append(orbDf["Z"].mean())
+        
+        ## CALCULATE DISTANCES BETWEEN PROTEIN ATOMS AND 
+        noCofactorDf.loc[:,"DISTANCES"] = np.linalg.norm(noCofactorDf[["X", "Y", "Z"]].values - np.array(orbCenter), axis=1)
+        ## MAKE ORB DATAFRAME OUT OF ATOMS THAT ARE WITHIN ORBVALUE OF ORB CENTER
+        orbDf = noCofactorDf[noCofactorDf["DISTANCES"] <= orbValue].copy()
+        orbDfs.append(orbDf)
+    orbDf = pd.concat(orbDfs, axis=0, ignore_index=True)
     return orbDf
 ########################################################################################
 def gen_cloud_region(cloudAtoms, cofactorName, pdbDf, cloudValue):
@@ -234,57 +243,63 @@ def calculate_amino_acid_properties_in_region(aaCountDf, aminoAcidNames, aminoAc
     return propertiesDf
 ########################################################################################
 
-def nearest_n_residues_to_key_atom(keyAtomCoords, pdbDf, aminoAcidNames, aminoAcidProperties,
+def nearest_n_residues_to_key_atom(keyAtomCoordsList, pdbDf, aminoAcidNames, aminoAcidProperties,
                                    proteinName,cofactorName, nNearestList) :
-    ## INITAILSE KEY ATOMS DATAFRAME ##       
-    columnNames = []
-    for keyAtomId, (x,y,z) in keyAtomCoords.iterrows():
-        for property in aminoAcidProperties:
-            for nNearest in nNearestList:
-                columnNames.append(f'{str(nNearest)}_{keyAtomId}.{property}')
-    keyAtomFeaturesDf = pd.DataFrame(columns=columnNames, index=[proteinName])
-
-
     ## REMOVE COFACTOR FROM PDB DATAFRAME ##
     noCofactorDf = pdbDf[pdbDf["RES_NAME"] != cofactorName]
-    ## LOOP THROUGH KEY ATOMS ##
-    for keyAtomId, (x,y,z) in keyAtomCoords.iterrows():
-        coordsReshaped = np.array([x,y,z]).reshape(1,-1)
-        ## CALCULATE DISTANCE TO KEY ATOM FOR ALL PROTEIN ATOMS ##
-        columnName=f'{keyAtomId}_distance'
-        noCofactorDf.loc[:,columnName] = np.linalg.norm((noCofactorDf[["X", "Y", "Z"]].values - coordsReshaped), axis=1)
-        ## GET LIST OF UNIQUE RESIDUE NUMBERS ##
-        uniqueResidues = noCofactorDf['RES_SEQ'].unique()
 
-        ## FIND NEAREST ATOM IN EACH RESIDUE TO KEY ATOM ##
-        nearestPointIndecies=[]
-        for residueSeq in uniqueResidues:
-            residueData = noCofactorDf[noCofactorDf['RES_SEQ'] == residueSeq]
-            nearestPointIdx = residueData[columnName].idxmin()
-            nearestPointIndecies.append(nearestPointIdx)    
+    keyAtomFeaturesList = []
 
-        ## GET NEW DATAFRAME CONTAINING ONLY NEAREST ATOMS OF EACH RESIDUE ##
-        nearestPointsResidues = noCofactorDf.loc[nearestPointIndecies]
-        ## RESET INDEX ##
-        nearestPointsResidues.reset_index(drop=True, inplace=True)
-        ## SORT BY DISTANCE TO KEY ATOM ##
-        nearestResiduesSorted = nearestPointsResidues.sort_values(by=columnName, ascending=True)
-        ## LOOP THROUGH NNEARESTLIST ##
-        for nNearest in nNearestList:
-            ## GET LIST OF N NEAREST RESIDUES TO KEY ATOM ##
-            nearestResidueList = nearestResiduesSorted.head(nNearest)["RES_NAME"].to_list()
-            ## GET PROPERTY VALUES ##
+    for keyAtomCoords in keyAtomCoordsList:
+        ## INITAILSE KEY ATOMS DATAFRAME ##       
+        columnNames = []
+        for keyAtomId, (x,y,z) in keyAtomCoords.iterrows():
             for property in aminoAcidProperties:
-                propertyValue=0
-                for aminoAcid in nearestResidueList:
-                    try:
-                        value = aminoAcidProperties.at[aminoAcid,property]
-                    except:
-                        value = 0
-                    propertyValue += value 
-                propertyValue = propertyValue / nNearest
-                ## ADD TO DATAFRAME ##
-                keyAtomFeaturesDf.loc[proteinName,f'{str(nNearest)}_{keyAtomId}.{property}'] = propertyValue
+                for nNearest in nNearestList:
+                    columnNames.append(f'{str(nNearest)}_{keyAtomId}.{property}')
+        keyAtomFeaturesDf = pd.DataFrame(columns=columnNames, index=[proteinName])
+
+        ## LOOP THROUGH KEY ATOMS ##
+        for keyAtomId, (x,y,z) in keyAtomCoords.iterrows():
+            coordsReshaped = np.array([x,y,z]).reshape(1,-1)
+            ## CALCULATE DISTANCE TO KEY ATOM FOR ALL PROTEIN ATOMS ##
+            columnName=f'{keyAtomId}_distance'
+            noCofactorDf.loc[:,columnName] = np.linalg.norm((noCofactorDf[["X", "Y", "Z"]].values - coordsReshaped), axis=1)
+            ## GET LIST OF UNIQUE RESIDUE NUMBERS ##
+            uniqueResidues = noCofactorDf['RES_SEQ'].unique()
+
+            ## FIND NEAREST ATOM IN EACH RESIDUE TO KEY ATOM ##
+            nearestPointIndecies=[]
+            for residueSeq in uniqueResidues:
+                residueData = noCofactorDf[noCofactorDf['RES_SEQ'] == residueSeq]
+                nearestPointIdx = residueData[columnName].idxmin()
+                nearestPointIndecies.append(nearestPointIdx)    
+
+            ## GET NEW DATAFRAME CONTAINING ONLY NEAREST ATOMS OF EACH RESIDUE ##
+            nearestPointsResidues = noCofactorDf.loc[nearestPointIndecies]
+            ## RESET INDEX ##
+            nearestPointsResidues.reset_index(drop=True, inplace=True)
+            ## SORT BY DISTANCE TO KEY ATOM ##
+            nearestResiduesSorted = nearestPointsResidues.sort_values(by=columnName, ascending=True)
+            ## LOOP THROUGH NNEARESTLIST ##
+            for nNearest in nNearestList:
+                ## GET LIST OF N NEAREST RESIDUES TO KEY ATOM ##
+                nearestResidueList = nearestResiduesSorted.head(nNearest)["RES_NAME"].to_list()
+                ## GET PROPERTY VALUES ##
+                for property in aminoAcidProperties:
+                    propertyValue=0
+                    for aminoAcid in nearestResidueList:
+                        try:
+                            value = aminoAcidProperties.at[aminoAcid,property]
+                        except:
+                            value = 0
+                        propertyValue += value 
+                    propertyValue = propertyValue / nNearest
+                    ## ADD TO DATAFRAME ##
+                    keyAtomFeaturesDf.loc[proteinName,f'{str(nNearest)}_{keyAtomId}.{property}'] = propertyValue
+        keyAtomFeaturesList.append(keyAtomFeaturesDf)
+
+        keyAtomFeaturesDf = pd.concat(keyAtomFeaturesList).groupby(level=0).sum()
 
     return keyAtomFeaturesDf
 ########################################################################################

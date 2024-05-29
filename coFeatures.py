@@ -77,7 +77,6 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAc
     pdbDir = pathInfo["inputDir"]
     outDir = pathInfo["outDir"]
 
-
     ## UNPACK JOB DETAILS INTO VARIABLES ##
     pdbId, orbValue, cloudValue = jobDetails
     pdbFile = p.join(pdbDir,f"{pdbId}.pdb")
@@ -85,12 +84,16 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAc
     outputCsv=p.join(outDir, f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.tmp")
     if p.isfile(outputCsv):
         return
+
     # INITIALISE LIST TO STORE ALL FEATURE DATAFRAMES ##
     pdbDf=pdb2df(pdbFile)
-    cofactorName, cofactorCountWrong = find_cofactor(pdbDf=pdbDf,cofactorInfo=cofactorInfo)
-    ## SKIP IF MORE THAN ONE OR ZERO COFACTORS PRESENT ##
-    if cofactorCountWrong:
+    cofactorCount, cofactorNames = find_cofactor(pdbDf=pdbDf,cofactorInfo=cofactorInfo)
+    ## SKIP ZERO COFACTORS OR MORE THAN ONE TYPE PRESENT ##
+    if cofactorCount == 0:
         return
+    elif len(cofactorNames) > 1:
+        return
+    cofactorName = cofactorNames[0]
 
     ## GET ORB, CLOUD, AND PROTEIN REGION DATAFRAMES ##
     orbDf = gen_orb_region(orbAtoms=cofactorInfo[cofactorName]["orbAtoms"],
@@ -145,11 +148,12 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAc
                                                                         proteinName=pdbId,
                                                                         regionName="protein")
     ## EXTRACT COORDINATES OF USER-DEFINED KEY ATOMS ##
-    keyAtomCoords = get_key_atom_coords(pdbDf = pdbDf,
+    keyAtomCoordsList = get_key_atom_coords(pdbDf = pdbDf,
                                         keyAtoms = cofactorInfo[cofactorName]["keyAtoms"],
                                         cofactorName = cofactorName) 
+
     ## NEAREST AMINO ACIDS TO KEY ATOMS ##
-    keyAtomsFeaturesDf        = nearest_n_residues_to_key_atom(keyAtomCoords=keyAtomCoords,
+    keyAtomsFeaturesDf        = nearest_n_residues_to_key_atom(keyAtomCoordsList=keyAtomCoordsList,
                                                              pdbDf=pdbDf,
                                                              aminoAcidNames=aminoAcidNames,
                                                              aminoAcidProperties=aminoAcidProperties,
@@ -166,15 +170,17 @@ def process_pdbs_worker(jobDetails, pathInfo, cofactorInfo, optionsInfo, aminoAc
     featuresDf=pd.concat(featuresToConcat,axis=1)
 
     if optionsInfo["genAminoAcidCategories"]:
-        make_amino_acid_category_counts(dataDf = featuresDf,
+        featuresDf = make_amino_acid_category_counts(dataDf = featuresDf,
                                         optionsInfo = optionsInfo)
 
     if optionsInfo["normaliseCounts"]:
-        normalise_counts_by_size(dataDf = featuresDf,
+        featuresDf =  normalise_counts_by_size(dataDf = featuresDf,
                                 aminoAcidNames = aminoAcidNames,
                                 optionsInfo= optionsInfo)
 
-
+    ## normalise by cofactor count
+    featuresDf = featuresDf / cofactorCount
+    ## write to file
     tmpSaveFile = p.join(outDir,f"{pdbId}_{str(orbValue)}_{str(cloudValue)}.csv")
     featuresDf.to_csv(tmpSaveFile,index=True, sep=",")
     return

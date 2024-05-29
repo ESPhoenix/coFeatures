@@ -16,10 +16,10 @@ def pdb2df(pdbFile):
                 atom_id = int(line[6:11].strip())
                 atom_name = line[12:16].strip()
                 res_name = line[17:20].strip()
-                chain_id = line[21:22].strip()
+                chain_id = line[21:23].strip()
                 if chain_id == '':
                     chain_id = None
-                res_seq = int(line[22:26].strip())
+                res_seq = int(line[23:26].strip())
                 x = float(line[30:38].strip())
                 y = float(line[38:46].strip())
                 z = float(line[46:54].strip())

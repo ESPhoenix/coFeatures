@@ -1,15 +1,15 @@
 pathInfo:
-  inputDir: "/home/esp/Machine_Learning/11_pdb_dataset/01_dataset_pdbs"
-  outDir: "/home/esp/Machine_Learning/11_pdb_dataset/02_features"
-  aminoAcidTable: "/home/esp/Machine_Learning/11_pdb_dataset/00_scripts/coFeatures/amino_acid_properties.txt"
+  inputDir: "/home/esp/Machine_Learning/11_pdb_dataset/013_bio_unit_pdbs_clean"
+  outDir: "/home/esp/Machine_Learning/11_pdb_dataset/02_features/01_biounits"
+  aminoAcidTable: "/home/esp/Machine_Learning/11_pdb_dataset/00_scripts/cofeatures/amino_acid_properties.txt"
 
 cofactorInfo:
   FMN:
-    keyAtoms: ["N1","N3","N5"]
+    keyAtoms: ["N1","N3","N5", "O2", "O4", "C7M", "C8M"]
     orbAtoms: ["N10","C10","C4A","N5","C5A","C9A"]
     cloudAtoms: ["N10","C9A","C9","C8","C8M","C7","C7M","C6","C5A","N5","C4A","C4","O4","N3","HN3","C2","O2","N1","C10"]
   FAD:
-    keyAtoms: ["N1","N3","N5"]
+    keyAtoms: ["N1","N3","N5", "O2", "O4", "C7M", "C8M"]
     orbAtoms: ["N10","C10","C4X","N5","C5X","C9A"]
     cloudAtoms: ["N10","C9A","C9","C8","C8M","C7","C7M","C6","C5X","N5","C4X","C4","O4","N3","HN3","C2","O2","N1","C10"]
 
